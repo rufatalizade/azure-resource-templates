@@ -275,9 +275,9 @@
         },
         "amerDefaultVnetName": {
             "type": "string",
-            "defaultValue": "VNT-CAE-P01",
+            "defaultValue": "vnetNameAmer",
             "allowedValues": [
-                "VNT-CAE-P01"
+                "vnet-01-amer"
             ],
             "metadata": {
                 "description": "list of Virtual networks for  EMEA"
