@@ -1,0 +1,48 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "deploymentId": {
+        "value": ""
+      },
+      "environment": {
+        "value": "test"
+      },
+      "location": {
+        "value": "West Europe"
+      },
+      "deployEnvVm": {
+        "value": "Yes"
+      },
+      "vNetResourceGroup": {
+        "value": "-vnetngw"
+      },
+      "vNetworkName": {
+        "value": "-vnet"
+      },
+      "dscArchiveName": {
+        "value": "dsc-config.zip"
+      },
+      "dscDataFileName": {
+        "value": "dsc-config-data.psd1"
+      },
+      "dscconfigurationFileName": {
+        "value": "DSCCoreConfig.ps1"
+      },
+      "dscconfigurationName": {
+        "value": "DSCCoreConfiguration"
+      },
+      "templateLinkBase": { 
+        "value": "https://sitecorestorage.blob.core.windows.net/sitecore9-1/xpscale-iaas/newproj/"
+      },
+      "PublicBlobUri": {
+        "value": "https://sitecorestorage.blob.core.windows.net/public/"
+      },
+      "commoncontainerName": {
+        "value": "commoncontainer"
+      },
+      "psPackageDir": {
+        "value": "C:\\PackageDir"
+      }     
+    }
+  }

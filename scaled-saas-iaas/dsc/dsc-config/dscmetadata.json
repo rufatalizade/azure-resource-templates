@@ -1,0 +1,14 @@
+{
+   "Modules" : [
+      "cAeroAzureCustomResources",
+      "xWebAdministration",
+      "xComputerManagement",
+      "xPSDesiredStateConfiguration",
+      "xNetworking",
+      "xDisk",
+      "xChrome",
+      "OctopusDSC",
+      "xNotepadPlusPlus",
+      "xPendingReboot"
+   ]
+}

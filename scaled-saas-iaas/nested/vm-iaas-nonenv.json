@@ -1,0 +1,419 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "deploymentId": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    },
+    "location": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "SASToken": {
+      "type": "securestring"
+    },
+    "availabilitySetName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-as','-', parameters('environment'))]"
+    },
+    "vNetworkName": {
+      "type": "string"
+    },
+    "vNetResourceGroup": {
+      "type": "string"
+    },
+    "subnetName": {
+      "type": "string"
+    },
+    "subnetAddressPrefix": {
+      "type": "string"
+    },
+    "nsgName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-nsg','-', parameters('environment'))]"
+    },
+    "allowNsgInboundFrom": {
+      "type": "string"
+    },
+    "nsgRules": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "ruleName": "http-in",
+          "protocol": "*",
+          "direction": "Inbound",
+          "access": "Allow",
+          "sourcePortRange": "*",
+          "sourceAddressPrefix": "[parameters('allowNsgInboundFrom')]",
+          "destinationPortRange": "80",
+          "destinationAddressPrefix": "*",
+          "priority": 110
+        },
+        {
+          "ruleName": "rdp-in",
+          "protocol": "*",
+          "direction": "Inbound",
+          "access": "Allow",
+          "sourcePortRange": "*",
+          "sourceAddressPrefix": "[parameters('allowNsgInboundFrom')]",
+          "destinationPortRange": "3389",
+          "destinationAddressPrefix": "*",
+          "priority": 130
+        }
+      ]
+    },
+    "vmName": {
+      "type": "string"
+    },
+    "vmSize": {
+      "type": "string",
+      "defaultValue": "Standard_B2ms"
+    },
+    "vmCount": {
+      "type": "int",
+      "defaultValue": 3
+    },
+    "vmAdminLoginName": {
+      "type": "string",
+      "defaultValue": "vmadm"
+    },
+    "vmAdminPassword": {
+      "type": "securestring"
+    },
+    "vmNicName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'), '-vmnic','-', parameters('environment'))]"
+    },
+    "packageToCopyUri": {
+      "type": "string"
+    },
+    "DscArchiveUri": {
+      "type": "string"
+    },
+    "DscDataUri": {
+      "type": "string"
+    },
+    "DscConfigFunction": {
+      "type": "string"
+    },
+    "commoncontainerName": {
+      "type": "string"
+    },
+    "psscriptFilename": {
+      "type": "string"
+    },
+    "psscriptUri": {
+      "type": "string"
+    },
+    "psPackageDir": {
+      "type": "string"
+    }, 
+    "ManagedDisk": {
+      "type": "string",
+      "defaultValue": "No"
+    },
+    "ProjectStorageType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "Standard_ZRS",
+        "Standard_GRS",
+        "Standard_RAGRS",
+        "Premium_LRS"
+      ]
+    },
+    "windowsOSVersion": {
+      "type": "string",
+      "defaultValue": "2016-Datacenter",
+      "allowedValues": [
+        "2008-R2-SP1",
+        "2012-Datacenter",
+        "2012-R2-Datacenter",
+        "2016-Nano-Server",
+        "2016-Datacenter-with-Containers",
+        "2016-Datacenter"
+      ]
+    }
+  },
+  "variables": {
+    "resourcesApiVersion": "2018-08-01",
+    "vnetID": "[resourceId(parameters('vNetResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('vNetworkName'))]",
+    "subnetRef": "[concat(variables('vnetID'),'/subnets/', parameters('subnetName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Compute/availabilitySets",
+      "name": "[parameters('availabilitySetName')]",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[parameters('location')]",
+      "properties": {
+        "platformFaultDomainCount": 3,
+        "platformUpdateDomainCount": 5
+      }
+    },
+    {
+      "apiVersion": "[variables('resourcesApiVersion')]",
+      "name": "[parameters('nsgName')]",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "properties": {
+        "copy": [
+          {
+            "name": "securityRules",
+            "count": "[length(parameters('nsgRules'))]",
+            "input": {
+              "name": "[parameters('nsgRules')[copyIndex('securityRules')].ruleName]",
+              "properties": {
+                "protocol": "[parameters('nsgRules')[copyIndex('securityRules')].protocol]",
+                "sourcePortRange": "[parameters('nsgRules')[copyIndex('securityRules')].sourcePortRange]",
+                "destinationPortRange": "[parameters('nsgRules')[copyIndex('securityRules')].destinationPortRange]",
+                "sourceAddressPrefix": "[parameters('nsgRules')[copyIndex('securityRules')].sourceAddressPrefix]",
+                "destinationAddressPrefix": "[parameters('nsgRules')[copyIndex('securityRules')].destinationAddressPrefix]",
+                "access": "[parameters('nsgRules')[copyIndex('securityRules')].access]",
+                "priority": "[parameters('nsgRules')[copyIndex('securityRules')].priority]",
+                "direction": "[parameters('nsgRules')[copyIndex('securityRules')].direction]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2018-08-01",
+      "type": "Microsoft.Resources/deployments",
+      "name": "[parameters('subnetName')]",
+      "resourceGroup": "[parameters('vNetResourceGroup')]",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+          "contentVersion": "1.0.0.0",
+          "resources": [
+            {
+              "apiVersion": "[variables('resourcesApiVersion')]",
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "name": "[concat(parameters('vNetworkName'), '/', parameters('subnetName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressPrefix": "[parameters('subnetAddressPrefix')]",
+                "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('nsgName'))]"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkSecurityGroups/', parameters('nsgName'))]"
+      ]
+    },
+    {
+      "apiVersion": "2017-03-01",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[concat(parameters('vmNicName'), copyindex(1))]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "copy": {
+        "name": "niccopy",
+        "count": "[parameters('vmCount')]"
+      },
+      "dependsOn": [
+        "[parameters('subnetName')]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2017-06-01",
+      "type": "Microsoft.Storage/storageAccounts",
+      "condition": "[not(equals(parameters('ManagedDisk'),'Yes'))]",
+      "kind": "Storage",
+      "location": "[resourceGroup().location]",
+      "name": "[concat(parameters('vmName'), copyindex(1),'sa',parameters('environment'))]",
+      "copy": {
+        "name": "SACopy",
+        "count": "[parameters('vmCount')]"
+      },
+      "properties": {
+        "encryption": {
+          "services": {
+            "blob": {
+              "enabled": true
+            }
+          },
+          "keySource": "Microsoft.Storage"
+        }
+      },
+      "sku": {
+        "name": "[parameters('ProjectStorageType')]"
+      }
+    },
+    {
+      "apiVersion": "2017-03-30",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[if(equals(parameters('ManagedDisk'),'No'),concat(parameters('vmName'), copyindex(1)),concat(parameters('vmName'), copyindex(1), '-', 'nonManagedDisk'))]",
+      "condition": "[not(equals(parameters('ManagedDisk'),'Yes'))]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "vmcopy",
+        "count": "[parameters('vmCount')]"
+      },
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/availabilitySets/', parameters('availabilitySetName'))]",
+        "[concat('Microsoft.Network/networkInterfaces/', parameters('vmNicName'),copyindex(1))]",
+        "[concat('Microsoft.Storage/storageAccounts/', parameters('vmName'), copyindex(1),'sa',parameters('environment'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets/', parameters('availabilitySetName'))]"
+        },
+        "osProfile": {
+          "computerName": "[concat(parameters('vmName'), copyindex(1))]",
+          "adminUsername": "[parameters('vmAdminLoginName')]",
+          "adminPassword": "[parameters('vmAdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "[parameters('windowsOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "osdisk",
+            "vhd": {
+              "uri": "[concat('http://', parameters('vmName'), copyindex(1),'sa',parameters('environment'), '.blob.core.windows.net/disks/', parameters('vmName'), copyindex(1), '-',  parameters('environment'), '-osdisk.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('vmNicName'), copyindex(1)))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "apiVersion": "2017-03-30",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[if(equals(parameters('ManagedDisk'),'Yes'),concat(parameters('vmName'), copyindex(1)),concat(parameters('vmName'), copyindex(1), '-', 'ManagedDisk'))]",
+      "condition": "[equals(parameters('ManagedDisk'),'Yes')]",
+      "location": "[resourceGroup().location]",
+      "copy": {
+        "name": "vmcopy",
+        "count": "[parameters('vmCount')]"
+      },
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Compute/availabilitySets/', parameters('availabilitySetName'))]",
+        "[concat('Microsoft.Network/networkInterfaces/', parameters('vmNicName'),copyindex(1))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('vmSize')]"
+        },
+        "availabilitySet": {
+          "id": "[resourceId('Microsoft.Compute/availabilitySets/', parameters('availabilitySetName'))]"
+        },
+        "osProfile": {
+          "computerName": "[concat(parameters('vmName'), copyindex(1))]",
+          "adminUsername": "[parameters('vmAdminLoginName')]",
+          "adminPassword": "[parameters('vmAdminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "[parameters('windowsOSVersion')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "[concat(parameters('vmName'),copyindex(1), '-msd','-os', '-',  parameters('environment'))]",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(parameters('vmNicName'), copyindex(1)))]"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat(parameters('vmName'), copyindex(1), '/dscextension')]",
+      "apiVersion": "2017-03-30",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', parameters('vmName'), copyindex(1))]"
+      ],
+      "copy": {
+        "name": "vmcopy",
+        "count": "[parameters('vmCount')]"
+      },
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "properties": {
+        "publisher": "Microsoft.Powershell",
+        "type": "DSC",
+        "typeHandlerVersion": "2.20",
+        "settings": {
+          "ModulesUrl": "[parameters('DscArchiveUri')]",
+          "SasToken": "[parameters('SASToken')]",
+          "ConfigurationFunction": "[parameters('DscConfigFunction')]",
+          "Properties": {
+            "MachineName": "[concat(parameters('vmName'), copyindex(1))]",
+            "role": "[parameters('role')]",
+            "packageToCopyUri": "[parameters('packageToCopyUri')]",
+            "env": "[parameters('environment')]"
+          }
+        },
+        "protectedSettings": {
+          "DataBlobUri": "[concat(parameters('DscDataUri'), parameters('SASToken'))]"
+        }
+      }
+    }
+  ]
+}

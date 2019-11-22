@@ -1,0 +1,868 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "templateLinkBase": {
+            "type": "string",
+            "defaultValue": "https://storagaccount11122.blob.core.windows.net/azdevopscontainer/",
+            "metadata": {
+                "description": "URI of the storage account that hold the linked templates"
+            }
+        },
+        "linkedTemplatePattern": {
+            "type": "string",
+            "defaultValue": "[concat(parameters('templateLinkBase'),parameters('environment'), '/arm/linkedTemplates/')]",
+            "metadata": {
+                "description": "URI of the storage account that hold the linked templates"
+            }
+        },
+        "linkedTemplateFiles": {
+            "type": "object",
+            "defaultValue": {
+                        "UpdateVMDiskEcryptionSettings": "UpdateVMDiskEcryptionSettings.json",
+                        "UpdateVMStaticPrivateIP": "UpdateVMStaticPrivateIP.json"
+                }
+        },
+        "vmName": {
+            "type": "string",
+            "maxLength": 4,
+            "minLength": 1,
+            "defaultValue": "[toUpper(take(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(uniqueString(utcNow()),'0','A'),'1','B'),'2','C'),'3','D'),'4','E'),'5','F'),'6','G'),'7','H'),'8','I'),'9','J'),'0','K'),4))]"
+            //"[concat(toUpper(uniqueString('web', deployment().name)), uniqueString('web', resourceGroup().id, subscription().subscriptionId),'4@')]",toUpper(
+            
+        },
+        "subscriptionId": {
+            "type": "string",
+            "defaultValue": "XXXXX-XXXXX-XXXXX-XXXXXX-XXXXX",
+            "metadata": {
+                "description": "SubscriptionID"
+            }
+        },
+        "SasToken": {
+            "type": "securestring"
+        },
+        "requester": {
+            "type": "string",
+            "defaultValue": "Rufat Alizada"
+        },
+        "description": {
+            "type": "string",
+            "defaultValue": "Description wasn't overrided"
+        },
+        "zone": {
+            "type": "string",
+            "defaultValue": "emea",
+            "allowedValues": [
+                "emea",
+                "apac",
+                "amer",
+            ],
+                "metadata": {
+                 "description": "In fact, deployment must be divided by specific unique Key identifiers (Zone>Region>Office>Environment). For the next release (1.1v) I'm planning to move current master.json's data values to NoSQL service and build script that would  pick specific Deployment data from it, example data chain : +emea+lu+prod, emealuprod"
+             }
+        },
+        "unit": {
+            "type": "string",
+            "defaultValue": "default",
+            "allowedValues": [
+                "default",
+                "NL",
+                "KY",
+                "HK"
+            ]
+        },
+        "environment": {
+            "type": "string",
+            "defaultValue": "prod",
+            "allowedValues": [
+                "dev",
+                "test",
+                "acc",
+                "prod"
+            ],
+            "metadata": {
+                 "description": "Environment name"
+             }
+        },
+        "role": {
+            "type": "string",
+            "defaultValue": "default",
+            "allowedValues": [
+                "default",
+                "workgroup",
+                "scaledProj1",
+                "scaledProj2"
+            ]
+        },
+        "rolePrefixes": {
+            "type": "object",
+            "defaultValue": {
+                "default": {"prefix":"DEF"},
+                "workgroup": {"prefix":"WRK"},
+                "scaledProj1": {"prefix":"SCL"},
+                "scaledProj2": {"prefix":"SCL"}
+            }
+        },
+        "singleRoleCount": {
+            "type": "int",
+            "defaultValue": 1
+        },
+        "singleRolePlatform": {
+            "type": "string",
+            "defaultValue": "Windows",
+            "allowedValues": [
+                "Windows",
+                "Linux"
+            ]
+        },
+        "mixedRole": {
+            "type": "object",
+            "defaultValue": {
+                    "scaledProj1": [
+                            {
+                                "vmname": "demovm1",  //starting from 1, the digit number will be appended to the end of this name
+                                "role": "scaledProj1",
+                                "platform": "Windows"
+                          },
+                                                      {
+                                "vmname": "demovm2",  //starting from 1, the digit number will be appended to the end of this name
+                                "role": "scaledProj1",
+                                "platform": "Windows"
+                          }
+                    ],
+                    "scaledProj2": [
+                            {
+                                "vmname": "app",
+                                "role": "scaledProj2",
+                                "platform": "Windows"
+                        },
+                            {
+                                "vmname": "appsec",
+                                "role": "scaledProj2",
+                                "platform": "Linux"
+                        },
+                        {
+                                "vmname": "appthr",
+                                "role": "scaledProj2",
+                                "platform": "Linux"
+                        },
+                            {
+                                "vmname": "aprev",
+                                "role": "scaledProj2",
+                                "platform": "Linux"
+                        }
+                    ]
+                        
+            }
+        },
+        "DSCConfigBase": {
+            "type": "string",
+            "defaultValue": "generic.v1.2.1"
+			
+        },
+        "virtualMachineSize": {
+            "type": "string",
+            "defaultValue": "ifOverrided",
+			"allowedValues": [
+				"Standard_F1S",
+				"Standard_F2S",
+				"Standard_DS3_v2",
+				"Standard_D2S_V3",
+				"Standard_D4S_v3",
+                "Standard_D8S_v3",
+
+                "ifOverrided"
+			]
+			
+        },
+        "windowsOSVersion": {
+            "type": "string",
+            "defaultValue": "2016-Datacenter",
+            "allowedValues": [
+              "2008-R2-SP1",
+              "2012-Datacenter",
+              "2012-R2-Datacenter",
+              "2016-Nano-Server",
+              "2016-Datacenter-with-Containers",
+              "2016-Datacenter"
+            ]
+        },
+        "stageMode": {
+            "type": "string",
+            "defaultValue": "no"
+			
+        },
+        "dataDiskSize": {
+            "type": "int",
+            "defaultValue": 64
+			
+        },
+        "osUsername": {
+            "type": "string",
+            "defaultValue": "localuser"
+        },
+        "domainJoinerAccountName": {
+            "type": "string",
+            "defaultValue": "domainJoinerAccountName"
+		},
+        "kvs": {
+            "type": "object",
+            "defaultValue": {
+                "alientId": "960a2df1-ffba-4a72-8c9d-c95596ad5c29",
+                "secretNameOfAlientSecret": "alientSecret",
+                "secretNameOfOSAdminPsw": "localAdminPassword",
+                "secretNameOfDscRegistrationKey": "DscRegKey",
+                "secretNameOfWorkspaceKey": "WorkspaceKey",
+                "secretNameOfdomainJoinerPassword": "domainPasswrd", //
+                "secretKeyVaultResourceId": "/subscriptions/variable(subscriptionID)/resourceGroups/global-DEVOPS/providers/Microsoft.KeyVault/vaults/global-devops-kv",
+                    "emeanl": {
+                            "keyVaultName": "keyvault1",
+                            "keyVaultRgName": "KVResourceGroup1",
+                            "keyVaultUri": "https://emea-kv1.vault.azure.net/",
+                            "keyVaultKeyEncryptionKeyUri": "https://emea-kv111.vault.azure.net/keys/kek/xxxxxxxxxx",
+                            "keyVaultResourceId":  "/subscriptions/subscriptionId()/resourceGroups/resourceGroup()/providers/Microsoft.KeyVault/vaults/kv1"
+                        },
+                    "emealu": {
+                            "keyVaultName": "keyvault2",
+                            "keyVaultRgName": "KVResourceGroup2",
+                            "keyVaultUri": "https://emea-kv1.vault.azure.net/",
+                            "keyVaultKeyEncryptionKeyUri": "https://keyvault-lu.vault.azure.net/keys/kek/xxxxxxxxxx",
+                            "keyVaultResourceId":  "/subscriptions/subscriptionId()/resourceGroups/resourceGroup()/providers/Microsoft.KeyVault/vaults/kv2"
+                        },
+                    "apac": {
+                            "keyVaultName": "keyvault3",
+                            "keyVaultRgName": "KVResourceGroup3",
+                            "keyVaultUri": "https://apac-kv1.vault.azure.net/",
+                            "keyVaultKeyEncryptionKeyUri": "https://apac-kv01.vault.azure.net/keys/kek/xxxxxxxxxxxxxxx",
+                            "keyVaultResourceId":  "/subscriptions/subscriptionId()/resourceGroups/resourceGroup()/providers/Microsoft.KeyVault/vaults/kv3"
+
+                        },
+                    "amer": {
+                            "keyVaultName": "keyvault4",
+                            "keyVaultRgName": "KVResourceGroup4",
+                            "keyVaultUri": "https://amer-kv1.vault.azure.net/",
+                            "keyVaultKeyEncryptionKeyUri": "https://amer-kv01.vault.azure.net/keys/kek/xxxxxxxxxxxx",
+                            "keyVaultResourceId": "/subscriptions/subscriptionId()/resourceGroups/resourceGroup()/providers/Microsoft.KeyVault/vaults/kv4"
+                        }
+                },
+            "metadata": {
+                "description": "Object containing all KeyVaults in Azure and all linked key values"
+                }
+        },
+        "emeaDefaultVnetName": {
+            "type": "string",
+            "defaultValue": "vnetvlan-emea",
+            "allowedValues": [
+                "vnetvlan-emea"
+            ]
+        },
+        "emeaLuVnetName": {
+            "type": "string",
+            "defaultValue": "vnetvlan-emea",
+            "allowedValues": [
+                "vnetvlan-emea"
+            ]
+        },
+        "apacDefaultVnetName": {
+            "type": "string",
+            "defaultValue": "vnet-01-apac",
+            "allowedValues": [
+                "vnet-01-apac"
+            ],
+            "metadata": {
+                "description": "list of Virtual networks for  apac (default unit)"
+            }
+        },
+        "amerDefaultVnetName": {
+            "type": "string",
+            "defaultValue": "VNT-CAE-P01",
+            "allowedValues": [
+                "VNT-CAE-P01"
+            ],
+            "metadata": {
+                "description": "list of Virtual networks for  EMEA"
+            }
+        },
+        "gspglobalDefaultVnetName": {
+            "type": "string",
+            "defaultValue": "EMEA-vnet-01",
+            "allowedValues": [
+                "EMEA-vnet-01"
+            ],
+            "metadata": {
+                "description": "list of Virtual networks for  EMEA"
+            }
+        },
+        "ouPath": {
+            "type": "string",
+            "defaultValue": "ou=default=dc=domain,dc=onprem,dc=net",
+            "metadata": {
+                "description": "AD OU path where VM would deployed"
+            }
+        },
+        "subnetId": {
+            "type": "int",
+            "defaultValue": 0,
+            "metadata": {
+                "description": "Subnet ID  - default is that always exist in each vnet in the 'zoneUnit' parameter"
+            }
+        },
+        "metadata": {
+            "type": "object",
+            "metadata": {
+                "description": "this metadata contains referred objects and fixed values for specific region, unit and environment"
+            },
+            "defaultValue": {
+                "emea": {
+                    "default": {
+                        "prod": {
+                            "location": "westeurope",
+                            "resourceGroupName": "emeaRgName",
+                            "vNetName": "[parameters('emeaDefaultVnetName')]",
+                            "backupVaultName": "ITR-emeaRgName",
+                            "backupVaultPolicyName": "BackupPolicy",
+                            "backupVaultRgName": "emeaRgName",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staaccountDiagnostic",
+                            "diagnosticsRgName": "emeaRgName",
+                            "virtualMachineSize": "Standard_D4S_v3",
+                            "keyVaultUsed": "emea",
+                            "unitPrefix":"NL",
+                            "vnets": {
+                                    "vnet-01-emeaRgName": {
+                                    "vNetRgName": "emeaRgName",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "vlan2"
+                                                },
+                                                {
+                                                    "id": 1,
+                                                    "name": "vlan2"
+                                                }
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {   
+                        }   
+                    },
+                    "lu":{
+                        "prod": {
+                            "location": "westeurope",
+                            "resourceGroupName": "lu",
+                            "vNetName": "[parameters('emeaLUVnetName')]",
+                            "backupVaultName": "emeaBkpRgName",
+                            "backupVaultPolicyName": "",
+                            "backupVaultRgName": "emealuRgName",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staaccountDiagnostic",
+                            "diagnosticsRgName": "staaccountDiagnosticRgName",
+                            "virtualMachineSize": "Standard_D4S_v3",
+                            "keyVaultUsed": "emealu",
+                            "unitPrefix":"LU",
+                            "vnets": {
+                                    "vnet-01": {
+                                    "vNetRgName": "emealuRgName",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "vlan1"
+                                                },
+                                                {
+                                                    "id": 1,
+                                                    "name": "vlan1"
+                                                }
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {
+                        }
+                    },
+                    "proj1":{
+                        "acc": {
+                            "location": "westeurope",
+                            "resourceGroupName": "emeaRgName",
+                            "vNetName": "vnetName1",
+                            "backupVaultName": "null",
+                            "backupVaultPolicyName": "null",
+                            "backupVaultRgName": "null",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staaccountDiagnostic",
+                            "diagnosticsRgName": "emeaRgName",
+                            "virtualMachineSize": "Standard_D2S_V3",
+                            "keyVaultUsed": "emea", 
+                            "unitPrefix":"proj1",
+                            "vnets": {
+                                    "VNT-EUW-P01": {
+                                    "vNetRgName": "global",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "vlan1"
+                                                }
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {
+                            "location": "westeurope",
+                            "resourceGroupName": "emeaRgName",
+                            "vNetName": "vnetName1",
+                            "backupVaultName": "null",
+                            "backupVaultPolicyName": "null",
+                            "backupVaultRgName": "null",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staccountDiagnost",
+                            "diagnosticsRgName": "daignosRgName",
+                            "virtualMachineSize": "Standard_D2S_V3",
+                            "keyVaultUsed": "emea",
+                            "unitPrefix":"VT",
+                            "vnets": {
+                                    "vnet1-emea": {
+                                    "vNetRgName": "globalal",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "subnet1"
+                                                }
+                                            ]
+                                        }
+                            }
+                        }
+                    }
+                },
+                "apac": {
+                    "default": {
+                        "prod": {
+                            "location": "eastasia",
+                            "resourceGroupName": "apac",
+                            "vNetName": "[parameters('apacDefaultVnetName')]",
+                            "backupVaultName": "apac",
+                            "backupVaultPolicyName": "BackupPolicy",
+                            "backupVaultRgName": "apacRgName",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staaccountDiagnost",
+                            "diagnosticsRgName": "apacRgName",
+                            "virtualMachineSize": "Standard_D4S_v3",
+                            "keyVaultUsed": "apac",
+                            "unitPrefix":"HK",
+                            "vnets": {
+                                    "vnet-01-apac": {
+                                    "vNetRgName": "apac",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "apac-VLAN01"
+                                                }
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {
+                        }
+                    }
+                },
+                "amer": {
+                    "default": {
+                        "prod": {
+                            "location": "canadaeast",
+                            "resourceGroupName": "amerRgName",
+                            "vNetName": "[parameters('amerDefaultVnetName')]",
+                            "backupVaultName": "amer",
+                            "backupVaultPolicyName": "BackupPolicy",
+                            "backupVaultRgName": "amerRgName",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staccountDiag1",
+                            "diagnosticsRgName": "amerRgName",
+                            "virtualMachineSize": "Standard_D4S_v3",
+                            "keyVaultUsed": "amer",
+                            "unitPrefix":"KY",
+                            "vnets": {
+                                    "vnet1-amer": {
+                                    "vNetRgName": "global",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "subnet1"
+                                                },
+                                                {
+                                                    "id": 1,
+                                                    "name": "subnet2"
+                                                }
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {
+                        }
+                    }
+                },
+                "gspglobal": {
+                    "default": {
+                        "prod": {
+                            "location": "westeurope",
+                            "resourceGroupName": "global",
+                            "vNetName": "[parameters('gspglobalDefaultVnetName')]",
+                            "backupVaultName": "globalAL",
+                            "backupVaultPolicyName": "BackupPolicy",
+                            "backupVaultRgName": "globalRgName",
+                            "backupTag": "Azure Backup",
+                            "diagnosticsStorageAccountName": "staccountDiagnostic",
+                            "diagnosticsRgName": "globalRgName",
+                            "virtualMachineSize": "Standard_D4S_v3",
+                            "keyVaultUsed": "emea",
+                            "unitPrefix":"GL",
+                            "vnets": {
+                                    "global-vnet-01": {
+                                    "vNetRgName": "global",
+                                    "subnets": [
+                                                {
+                                                    "id": 0,
+                                                    "name": "vlan1"
+                                                },
+                                                {
+                                                    "id": 1,
+                                                    "name": "vlan2"
+                                                },
+                                                {
+                                                    "id": 2,
+                                                    "name": "vlan3"
+                                                },
+                                                {
+                                                    "id": 3,
+                                                    "name": "vlan4"
+                                                },
+                                            ]
+                                        }
+                            }
+                        },
+                        "test": {
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "variables": {
+        
+        "subscriptionId": "[parameters('subscriptionId')]",
+        "templateLinkBase": "[parameters('templateLinkBase')]",
+        "linkedTemplatePattern": "[parameters('linkedTemplatePattern')]", 
+        "environment": "[parameters('environment')]", 
+        "unit": "[parameters('unit')]", 
+        "location": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['location']]",
+        "resourceGroupName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['resourceGroupName']]",
+        "description": "[parameters('description')]",
+        "requester": "[parameters('requester')]",
+
+
+        "environmentPrefix": "[first(parameters('environment'))]",  //Example:  D,T,A,P
+        "unitPrefix": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['unitPrefix']]", //Example: NL,LU,JY,VT
+        "rolePrefix": "[parameters('rolePrefixes')[parameters('role')].prefix]",  //Example: MSQ,IIS,LSF
+        "vmName": "[parameters('vmName')]", 
+        "prefix": "[toUpper(concat(variables('environmentPrefix'),variables('unitPrefix'),variables('rolePrefix'),variables('vmName'),'AZ'))]",
+        "singleOrMixedRole": "[contains(parameters('mixedRole'),parameters('role'))]",
+        "instanceCount": "[if(bool(variables('singleOrMixedRole')),length(parameters('mixedRole')[parameters('role')]),parameters('singleRoleCount'))]",
+        "singleVirtualMachineObj": "[json(concat('[{','\"vmname\": \"' ,variables('prefix'),'\"',',','\"role\": \"' ,variables('rolePrefix'),'\"',',','\"platform\": \"' ,parameters('singleRolePlatform'),'\"','}]'))]", 
+        "singleNmultipleVirtualMachineObj": {"copy": [{"name": "singleVmRoleObjects","count": "[parameters('singleRoleCount')]","input": {"vmname": "[variables('singleVirtualMachineObj')[0]['vmname']]","role": "[variables('singleVirtualMachineObj')[0]['role']]","platform": "[variables('singleVirtualMachineObj')[0]['platform']]"}}]},
+        "virtualMachineObj": "[if(bool(variables('singleOrMixedRole')),parameters('mixedRole')[parameters('role')],variables('singleNmultipleVirtualMachineObj')['singleVmRoleObjects'])]", 
+
+        "vNetName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['vNetName']]",
+        "vNetRgName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['vnets'][variables('vNetName')].vNetRgName]",
+        "subnetName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['vnets'][variables('vNetName')]['subnets'][parameters('subnetId')].name]",
+        "subnetRecourceId": "[resourceId(parameters('subscriptionId'),variables('vNetRgName'),'Microsoft.Network/virtualNetworks/subnets',variables('vNetName'),variables('subnetName'))]",
+
+        "backupVaultName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['backupVaultName']]",
+        "backupVaultPolicyName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['backupVaultPolicyName']]",
+        "backupVaultRgName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['backupVaultRgName']]",
+        "backupTag": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['backupTag']]",
+       
+        "diagnosticsRgName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['diagnosticsRgName']]",
+        "diagnosticsStorageAccountName": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['diagnosticsStorageAccountName']]",
+
+        "keyVaultUsed": "[parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['keyVaultUsed']]",
+        "keyVaultName": "[parameters('kvs')[variables('keyVaultUsed')]['keyVaultName']]",
+        "keyVaultRgName": "[parameters('kvs')[variables('keyVaultUsed')]['keyVaultRgName']]",
+        "keyVaultUri": "[parameters('kvs')[variables('keyVaultUsed')]['keyVaultUri']]",
+        "keyVaultKeyEncryptionKeyUri": "[parameters('kvs')[variables('keyVaultUsed')]['keyVaultKeyEncryptionKeyUri']]",
+        "keyVaultResourceId": "[parameters('kvs')[variables('keyVaultUsed')]['keyVaultResourceId']]",
+        
+        "alientId": "[parameters('kvs')['alientId']]",
+        "secretKeyVaultResourceId": "[parameters('kvs')['secretKeyVaultResourceId']]",
+        "secretNameOfAlientSecret": "[parameters('kvs')['secretNameOfAlientSecret']]",
+        "secretNameOfOSAdminPsw": "[parameters('kvs')['secretNameOfOSAdminPsw']]",
+        "secretNameOfDscRegistrationKey": "[parameters('kvs')['secretNameOfDscRegistrationKey']]",
+        "secretNameOfWorkspaceKey": "[parameters('kvs')['secretNameOfWorkspaceKey']]",
+        "secretNameOfdomainJoinerPassword":  "[parameters('kvs')['secretNameOfdomainJoinerPassword']]",
+
+        "UpdateVMDiskEcryptionSettings":  "[parameters('linkedTemplateFiles').UpdateVMDiskEcryptionSettings]",
+        "UpdateVMStaticPrivateIP":  "[parameters('linkedTemplateFiles').UpdateVMStaticPrivateIP]",
+
+        
+        "virtualMachineSize": "[if(equals(parameters('virtualMachineSize'),'ifOverrided'), parameters('metadata')[parameters('zone')][parameters('unit')][parameters('environment')]['virtualMachineSize'],parameters('virtualMachineSize'))]",
+        "windowsOSVersion": "[parameters('windowsOSVersion')]",
+        "ouPath": "[parameters('ouPath')]",
+        "osUsername": "[parameters('osUsername')]",
+        "domainJoinerAccountName": "[parameters('domainJoinerAccountName')]",
+        "dataDiskSize": "[parameters('dataDiskSize')]",
+        "DSCConfigBase": "[parameters('DSCConfigBase')]"
+
+    },
+    "resources": [
+
+        {
+            "apiVersion": "2018-08-01",
+            "name": "[concat(parameters('zone'),'-',parameters('unit'),'-','vmdeploy1')]",
+            "condition":"[equals(parameters('stageMode'),'no')]",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+            "mode": "Incremental",
+            "templateLink": {
+                "uri": "[concat(uri(parameters('linkedTemplatePattern'), 'iaasvm.json'), parameters('SasToken'))]"
+            },
+                "parameters": {
+
+                    "subscriptionId": {
+                        "value": "[variables('subscriptionId')]"
+                    },
+                    "templateLinkBase": {
+                        "value": "[variables('templateLinkBase')]"
+                    },
+                    "linkedTemplatePattern": {
+                        "value": "[variables('linkedTemplatePattern')]"
+                    },
+                    "environment": {
+                        "value": "[variables('environment')]"
+                    },
+                    "unit": {
+                        "value": "[variables('unit')]"
+                    },
+                    "location": {
+                        "value": "[variables('location')]"
+                    },
+                    "resourceGroupName": {
+                        "value": "[variables('resourceGroupName')]"
+                    },
+                    "requester": {
+                        "value": "[variables('requester')]"
+                    },
+                    "description": {
+                        "value": "[variables('description')]"
+                    },
+
+                    "instanceCount": {
+                        "value": "[variables('instanceCount')]"
+                    },
+                    "virtualMachineObj": {
+                        "value": "[variables('virtualMachineObj')]"
+                    },
+
+                    "vNetName": {
+                        "value": "[variables('vNetName')]"
+                    },
+                    "vNetRgName": {
+                        "value": "[variables('vNetRgName')]"
+                    },
+                    "subnetName": {
+                        "value": "[variables('subnetName')]"
+                    },
+                    "subnetRecourceId": {
+                        "value": "[variables('subnetRecourceId')]"
+                    },
+
+
+                    "backupVaultName": {
+                        "value": "[variables('backupVaultName')]"
+                    },
+                    "backupVaultPolicyName": {
+                        "value": "[variables('backupVaultPolicyName')]"
+                    },
+                    "backupVaultRgName": {
+                        "value": "[variables('backupVaultRgName')]"
+                    },
+                    "backupTag": {
+                        "value": "[variables('backupTag')]"
+                    },
+
+                    "diagnosticsRgName": {
+                        "value": "[variables('diagnosticsRgName')]"
+                    },
+                    "diagnosticsStorageAccountName": {
+                        "value": "[variables('diagnosticsStorageAccountName')]"
+                    },
+
+
+                    "keyVaultName": {
+                        "value": "[variables('keyVaultName')]"
+                    },
+                    "keyVaultRgName": {
+                        "value": "[variables('keyVaultRgName')]"
+                    },
+                    "keyVaultUri": {
+                        "value": "[variables('keyVaultUri')]"
+                    },
+                    "keyVaultKeyEncryptionKeyUri": {
+                        "value": "[variables('keyVaultKeyEncryptionKeyUri')]"
+                    },
+                    "keyVaultResourceId": {
+                        "value": "[variables('keyVaultResourceId')]"
+                    },
+
+
+
+                    "alientId": {
+                        "value": "[variables('alientId')]"
+                    },
+                    "secretNameOfAlientSecret": {
+                        "reference": {
+                            "keyVault": {
+                                "id": "[variables('secretKeyVaultResourceId')]"
+                            },
+                            "secretName": "[variables('secretNameOfAlientSecret')]"
+                        }
+                    },
+                    "secretNameOfOSAdminPsw": {
+                        "reference": {
+                            "keyVault": {
+                                "id": "[variables('secretKeyVaultResourceId')]"
+                            },
+                            "secretName": "[variables('secretNameOfOSAdminPsw')]"
+                        }
+                    },
+                    "secretNameOfDscRegistrationKey": {
+                        "reference": {
+                            "keyVault": {
+                                "id": "[variables('secretKeyVaultResourceId')]"
+                            },
+                            "secretName": "[variables('secretNameOfDscRegistrationKey')]"
+                        }
+                    },
+                    "secretNameOfWorkspaceKey": {
+                        "reference": {
+                            "keyVault": {
+                                "id": "[variables('secretKeyVaultResourceId')]"
+                            },
+                            "secretName": "[variables('secretNameOfWorkspaceKey')]"
+                        }
+                    },
+                    "secretNameOfdomainJoinerPassword": {
+                        "reference": {
+                            "keyVault": {
+                                "id": "[variables('secretKeyVaultResourceId')]"
+                            },
+                            "secretName": "[variables('secretNameOfdomainJoinerPassword')]"
+                        }
+                    },
+                    
+                    
+                    "UpdateVMDiskEcryptionSettings": {
+                        "value": "[variables('UpdateVMDiskEcryptionSettings')]"
+                    },
+                    "UpdateVMStaticPrivateIP": {
+                        "value": "[variables('UpdateVMStaticPrivateIP')]"
+                    },
+
+
+                    "virtualMachineSize": {
+                        "value": "[variables('virtualMachineSize')]"
+                    },
+                    "windowsOSVersion": {
+                        "value": "[variables('windowsOSVersion')]"
+                    },
+                    "ouPath": {
+                        "value": "[variables('ouPath')]"
+                    },
+                    "osUsername": {
+                        "value": "[variables('osUsername')]"
+                    },
+                    "domainJoinerAccountName": {
+                        "value": "[variables('domainJoinerAccountName')]"
+                    },
+                    "dataDiskSize": {
+                        "value": "[variables('dataDiskSize')]"
+                    },
+                    "DSCConfigBase": {
+                        "value": "[variables('DSCConfigBase')]"
+                    },
+
+                    "SasToken": {
+                        "value": "[parameters('SasToken')]"
+                    }
+                } 
+            }
+        }   
+
+
+
+    ],
+    "outputs": {
+        "all": {
+            "type": "object",
+            "value": {
+            "vmName": "[variables('vmName')]",
+            "subscriptionId": "[parameters('subscriptionId')]",
+            "linkedTemplatePattern": "[parameters('linkedTemplatePattern')]",
+            "templateLinkBase": "[parameters('templateLinkBase')]",
+            "environment": "[variables('environment')]",
+            "unit": "[variables('unit')]",         
+            "location": "[variables('location')]",
+            "resourceGroupName": "[variables('resourceGroupName')]",
+            "requester": "[variables('requester')]",
+            "description": "[variables('description')]",
+            
+            "environmentPrefix": "[variables('environmentPrefix')]",
+            "unitPrefix": "[variables('unitPrefix')]",
+            "rolePrefix": "[variables('rolePrefix')]",
+            "prefix": "[variables('prefix')]",
+            "instanceCount": "[variables('instanceCount')]",
+
+            "vNetName": "[variables('vNetName')]",
+            "vNetRgName": "[variables('vNetRgName')]",
+            "subnetName": "[variables('subnetName')]",
+            "subnetRecourceId": "[variables('subnetRecourceId')]",
+
+            "backupVaultName": "[variables('backupVaultName')]",
+            "backupVaultPolicyName": "[variables('backupVaultPolicyName')]",
+            "backupVaultRgName": "[variables('backupVaultRgName')]",
+            "backupTag": "[variables('backupTag')]",
+            
+            "diagnosticsRgName": "[variables('diagnosticsRgName')]",
+            "diagnosticsStorageAccountName": "[variables('diagnosticsStorageAccountName')]",
+
+            "keyVaultName": "[variables('keyVaultName')]",
+            "keyVaultRgName": "[variables('keyVaultRgName')]",
+            "keyVaultUri": "[variables('keyVaultUri')]",
+            "keyVaultKeyEncryptionKeyUri": "[variables('keyVaultKeyEncryptionKeyUri')]",
+            "keyVaultResourceId": "[variables('keyVaultResourceId')]",
+            
+            "alientId": "[variables('alientId')]",
+            "secretNameOfAlientSecret": "[variables('secretNameOfAlientSecret')]",
+            "secretNameOfOSAdminPsw": "[variables('secretNameOfOSAdminPsw')]",
+            "secretNameOfDscRegistrationKey": "[variables('secretNameOfDscRegistrationKey')]",
+            "secretNameOfWorkspaceKey": "[variables('secretNameOfWorkspaceKey')]",            
+            "secretKeyVaultResourceId": "[variables('secretKeyVaultResourceId')]",            
+            "secretNameOfdomainJoinerPassword": "[variables('secretNameOfdomainJoinerPassword')]",
+
+            "UpdateVMDiskEcryptionSettings": "[variables('UpdateVMDiskEcryptionSettings')]",
+            "UpdateVMStaticPrivateIP": "[variables('UpdateVMStaticPrivateIP')]",
+
+            "virtualMachineSize": "[variables('virtualMachineSize')]",
+            "windowsOSVersion": "[variables('windowsOSVersion')]",
+            "ouPath": "[variables('ouPath')]",
+            "osUsername": "[variables('osUsername')]",
+            "domainJoinerAccountName": "[variables('domainJoinerAccountName')]",
+            "dataDiskSize": "[variables('dataDiskSize')]",
+            "DSCConfigBase": "[variables('DSCConfigBase')]"
+
+            }
+        },
+        "virtualMachineObj": {
+            "type": "object",
+            "value": {
+                "prop": "[variables('virtualMachineObj')]"
+            }
+        }
+    }
+}

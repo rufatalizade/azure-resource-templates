@@ -1,0 +1,550 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "deploymentId": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().name]"
+        },
+        "environment": {
+            "type": "string",
+            "allowedValues": [ "test", "dev", "acc", "prod", "nonenv"],
+            "defaultValue": "test"
+        },
+        "role": {
+            "type": "string",
+            "allowedValues": [ "solr", "solrcloud", "cm", "mgmt"]
+        },
+        "companyLabel": {
+            "type": "string",
+            "defaultValue": ""
+        },
+        "vNetSubnets": {
+            "type": "array",
+            "defaultValue": [
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'devsolr')]",
+                "addressPrefix": "10.0.1.0/24",
+                "environment": "dev",
+                "role": "solr"
+              },
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'accsolr')]",
+                "addressPrefix": "10.0.2.0/24",
+                "environment": "acc",
+                "role": "solr"
+              },
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'acccm')]",
+                "addressPrefix": "10.0.3.0/24",
+                "environment": "acc",
+                "role": "cm"
+              },
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'prodsolr')]",
+                "addressPrefix": "10.0.4.0/24",
+                "environment": "prod",
+                "role": "solr"
+              },
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'prodcm')]",
+                "addressPrefix": "10.0.5.0/24",
+                "environment": "prod",
+                "role": "cm"
+              },
+              {
+                "name": "[concat(toLower(parameters('companyLabel')),'-',  'subnet', '-', 'prodcm')]",
+                "addressPrefix": "10.0.0.128/25",
+                "environment": "nonenv",
+                "role": "mgmt"
+              }
+            ]
+        },
+        "templateLinkBase": {
+            "type": "string",
+            "minLength": 1,
+            "defaultValue": "[uri(replace(json(string(deployment().properties.templateLink)).uri,' ','%20'), '.')]"
+        },
+        "templateLinkAccessToken": {
+            "type": "securestring",
+            "defaultValue": ""
+        },
+        "DeployVNet": {
+            "type": "string",
+            "defaultValue": "No"
+        },
+        "deployEnvVm": {
+            "type": "string",
+            "defaultValue": "No"
+        },
+        "vNetResourceGroup": {
+            "type": "string",
+            "defaultValue": "-vnetngw"
+        },
+        "vNetworkName": {
+            "type": "string",
+            "defaultValue": "-vnet"
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]"
+        },
+        "addressPrefix": {
+            "type": "string",
+            "defaultValue": "10.0.0.0/16"
+        },
+        "enableDdosProtection": {
+            "type": "bool",
+            "defaultValue": false
+        },
+        "Gwname": {
+            "type": "string",
+            "defaultValue": "-ngw"
+        },
+        "GwSku": {
+            "type": "string",
+            "defaultValue": "VpnGw1"
+        },
+        "GwSubnetPrefix": {
+            "type": "string",
+            "defaultValue": "10.0.10.0/24"
+        },
+        "GwVpnClientAddressPoolPrefix": {
+            "type": "string",
+            "defaultValue": "10.1.255.128/25"
+        },
+        "GwPublicIpName": {
+            "type": "string",
+            "defaultValue":  "[concat(toLower(parameters('deploymentId')),'-',  'gwpip')]"
+        },
+        "GwPIPdomainNameLabel": {
+            "type": "string",
+            "defaultValue":  "[concat(toLower(parameters('deploymentId')),'-',  'vpngw')]"
+        },
+        "GwclientRootCertName": {
+            "type": "string",
+            "defaultValue": "AzureP2SRootCert"
+        },
+        "GwclientRootCertData": {
+            "type": "string",
+            "defaultValue": "MIIC8TCCAdmgAwIBAgIQYGmpz+/u77VC7AEA1J6pVTANBgkqhkiG9w0BAQsFADAbMRkwFwYDVQQDDBBBenVyZVAyU1Jvb3RDZXJ0MB4XDTE5MDIwODExMzc1NFoXDTIwMDIwODExNTc1NFowGzEZMBcGA1UEAwwQQXp1cmVQMlNSb290Q2VydDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMli1BjLbod6VdnR31+9q8z1g7hvmHerwtbuWT/G4SgL3BqpjDNcvx4D7LBu76HWbu0kBzkdD08eZ10sMLCp7+r6L088Bk288r30oAe9xOmySu+hqDt9vifeMMLIxYGzsysWBwiP8o+91Fn9n1yPmscDqdqDOPFyPRwx+ncclb96eliC3RbA+j/0n8xDGaxGKEjrZr5+6o5N9kFHhtCnllEEmY2HG/V1EnAOINc2mbIPzcSLy6g6Q0D6TYRW7jOW+aOe5ubXf2O4lKShXRa0/D0/Rn4NsN+W9wW8ujlx/bDGmDbvQPcO1zw5ZALjw1B2CXpykZJmFw3Hp+84mc3jSrECAwEAAaMxMC8wDgYDVR0PAQH/BAQDAgIEMB0GA1UdDgQWBBRFxgifRzJ8ph31IlCCkFcpLppeqjANBgkqhkiG9w0BAQsFAAOCAQEApG2/lhVfRKtzOEMWkp2i6qzOQ01TOfShrUbDn/6P4r8TN+1fqBX3hktQ4u09JVQtOFKvSN6017DAytNoPHX6/jIAJQ6HfPP218otA6OELcdRxCThcZsEXiUyKYVGwVcBTV87W6coH+m9UB9OtJ5bKELzqpePCOTfD8axWMzLcYOEwYsJp235y2r0iDtzJLwLJlcD7g09iJzaG48ByJMrSlziSwKGKp3GcCU76RR3SOxDaQ14RajbUqT7KmQZS7+Cyy8aapxJhqz38iIn23I7aXOxHN1+e+h1L/qbo4FmaSnSHLKtzMeiBHGOa/PCeFadXe5MtciX0ateyVlRhO4n4w=="
+        },
+        "lbprivateIPAddress": {
+            "type": "string"
+        },
+        "vmName": {
+            "type": "string",
+            "defaultValue": "[concat(parameters('companyLabel'), '-',  parameters('environment'))]"
+        },
+        "subnetName": {
+            "type": "string",
+            "defaultValue": "[concat(parameters('deploymentId'), '-', 'subnet', '-', parameters('environment'))]"
+        },
+        "subnetAddressPrefix": {
+            "type": "string",
+            "defaultValue": "10.0.1.0/24"
+        },
+        "vmAdminLoginName": {
+            "type": "string",
+            "defaultValue": "vmadm"
+        },
+        "vmAdminPassword": {
+            "type": "securestring"
+        },
+        "solrPorts": {
+            "type": "object",
+            "defaultValue": {
+                "solr1HttpPort": "8983",
+                "solr1HttpsPort": "8984",
+                "solr2HttpPort": "8985",
+                "solr2HttpsPort": "8986"
+            }
+        },
+        "solrHttps": {
+            "type": "bool",
+            "defaultValue": true   
+        },
+        "vmCount": {
+            "type": "int",
+            "defaultValue": 1
+        },
+        "PublicBlobUri": {
+            "type": "string"
+        },
+        "commoncontainerName": {
+            "type": "string"
+        },
+        "dsccontainer": {
+            "type": "string",
+            "defaultValue": "dsc"
+        },
+        "dscArchiveName": {
+            "type": "string"
+        },
+        "dscconfigurationFileName": {
+            "type": "string"
+        },
+        "dscconfigurationName": {
+            "type": "string"
+        },
+        "dscDataFileName": {
+            "type": "string"
+        },
+        "psScriptFileName": {
+            "type": "string"
+        },
+        "psPackageDir": {
+            "type": "string"
+        },
+        "packageToCopy": {
+            "type": "string"
+        }
+    },
+    "variables": {
+        "resourcesApiVersion": "2018-08-01",
+        "packageToCopyUri" : "[concat(uri(parameters('PublicBlobUri'), parameters('commoncontainerName')), '/', parameters('packageToCopy'))]",
+        "psscriptUri" : "[concat(uri(parameters('PublicBlobUri'), parameters('commoncontainerName')), '/', parameters('psScriptFileName'))]",
+        "DscArchiveUri" : "[concat(uri(parameters('templateLinkBase'), parameters('dsccontainer')), '/', parameters('dscArchiveName'))]",
+        "DscDataUri" : "[concat(uri(parameters('templateLinkBase'), parameters('dsccontainer')), '/', parameters('dscDataFileName'))]",
+        "DscConfigFunction" : "[concat(parameters('dscconfigurationFileName'), '\\', parameters('dscconfigurationName'))]",
+        "ifDevTest": "[or(equals(parameters('environment'),'dev'),equals(parameters('environment'),'test'))]",
+        "ifAccProd": "[or(equals(parameters('environment'),'acc'),equals(parameters('environment'),'prod'))]",
+        "solrInstance1Port": "[if(equals(parameters('solrHttps'),bool('true')), parameters('solrPorts').solr1HttpsPort, parameters('solrPorts').solr1HttpPort)]",
+        "solrInstance2Port": "[if(equals(parameters('solrHttps'),bool('true')), parameters('solrPorts').solr2HttpsPort, parameters('solrPorts').solr2HttpPort)]"
+        
+      },
+    "resources": [
+        {
+            "apiVersion": "[variables('resourcesApiVersion')]",
+            "name": "[concat(parameters('deploymentId'), '-vnet')]",
+            "condition":"[equals(parameters('DeployVNet'),'Yes')]",
+            "resourceGroup": "[parameters('vNetResourceGroup')]",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+              "mode": "Incremental",
+              "templateLink": {
+                "uri": "[concat(uri(parameters('templateLinkBase'), 'nested/vnet.json'), parameters('templateLinkAccessToken'))]"
+              },
+              "parameters": {
+                "deploymentId": {
+                  "value": "[parameters('deploymentId')]"
+                },
+                "environment": {
+                  "value": "[parameters('environment')]"
+                },
+                "vNetSubnets": {
+                    "value": "[parameters('vNetSubnets')]"
+                },
+                "vNetworkName": {
+                  "value": "[parameters('vNetworkName')]"
+                },
+                "location": {
+                  "value": "[parameters('location')]"
+                },
+                "addressPrefix": {
+                  "value": "[parameters('addressPrefix')]"
+                },
+                "enableDdosProtection": {
+                  "value": "[parameters('enableDdosProtection')]"
+                },
+                "Gwname": {
+                    "value": "[parameters('Gwname')]"
+                },
+                "GwSku": {
+                    "value": "[parameters('GwSku')]"
+                },
+                "GwSubnetPrefix": {
+                    "value": "[parameters('GwSubnetPrefix')]"
+                },
+                "GwVpnClientAddressPoolPrefix": {
+                    "value": "[parameters('GwVpnClientAddressPoolPrefix')]"
+                },
+                "GwPublicIpName": {
+                    "value": "[parameters('GwPublicIpName')]"
+                },
+                "GwPIPdomainNameLabel": {
+                    "value": "[parameters('GwPIPdomainNameLabel')]"
+                },
+                "GwclientRootCertName": {
+                    "value": "[parameters('GwclientRootCertName')]"
+                },
+                "GwclientRootCertData": {
+                    "value": "[parameters('GwclientRootCertData')]"
+                }    
+              }
+            }
+        },
+        {
+            "apiVersion": "[variables('resourcesApiVersion')]",
+            "name": "[concat(parameters('deploymentId'), '-accprod')]",
+            "condition": "[and(bool(variables('ifAccProd')),equals(parameters('deployEnvVm'),'Yes'))]",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+              "mode": "Incremental",
+              "templateLink": {
+                "uri": "[concat(uri(parameters('templateLinkBase'), 'nested/vm-iaas-accprod.json'), parameters('templateLinkAccessToken'))]"
+              },
+              "parameters": {
+        
+                "deploymentId": {
+                  "value": "[parameters('deploymentId')]"
+                },
+                "environment": {
+                  "value": "[parameters('environment')]"
+                },
+                "role": {
+                    "value": "[parameters('role')]"
+                },
+                "lbprivateIPAddress": {
+                    "value": "[parameters('lbprivateIPAddress')]"
+                },
+                "SASToken": {
+                    "value": "[parameters('templateLinkAccessToken')]"
+                },
+                "subnetName": {
+                    "value": "[parameters('subnetName')]"
+                },
+                "vNetworkName": {
+                    "value": "[parameters('vNetworkName')]"
+                },
+                "vNetResourceGroup": {
+                    "value": "[parameters('vNetResourceGroup')]"
+                },
+                "allowNsgInboundFrom": {
+                    "value": "[parameters('GwVpnClientAddressPoolPrefix')]"
+                },
+                "location": {
+                  "value": "[parameters('location')]"
+                },
+                "vmName": {
+                    "value": "[parameters('vmName')]"
+                },
+                "subnetAddressPrefix": {
+                  "value": "[parameters('subnetAddressPrefix')]"
+                },
+                "vmAdminLoginName": {
+                   "value": "[parameters('vmAdminLoginName')]"
+                },
+                "vmAdminPassword": {
+                    "value": "[parameters('vmAdminPassword')]"
+                },
+                "vmCount": {
+                    "value": "[parameters('vmCount')]"
+                },
+                "solrInstance1Port": {
+                    "value": "[variables('solrInstance1Port')]"
+                },
+                "solrInstance2Port": {
+                    "value": "[variables('solrInstance2Port')]"
+                },
+                "packageToCopyUri": {
+                    "value": "[variables('packageToCopyUri')]"
+                },
+                "DscArchiveUri": {
+                    "value": "[variables('DscArchiveUri')]"
+                },
+                "DscDataUri": {
+                    "value": "[variables('DscDataUri')]"
+                },
+                "DscConfigFunction": {
+                    "value": "[variables('DscConfigFunction')]"
+                },
+                "commoncontainerName": {
+                    "value": "[parameters('commoncontainerName')]"
+                },
+                "psscriptFilename": {
+                    "value": "[parameters('psscriptFilename')]"
+                },
+                "psscriptUri": {
+                    "value": "[variables('psscriptUri')]"
+                },
+                "psPackageDir": {
+                    "value": "[parameters('psPackageDir')]"
+                }
+              }
+            },
+            "dependsOn": [
+                "[resourceId(parameters('vNetResourceGroup'),'Microsoft.Resources/deployments', concat(parameters('deploymentId'), '-vnet'))]"
+              ]
+        },
+        {
+            "apiVersion": "[variables('resourcesApiVersion')]",
+            "name": "[concat(parameters('deploymentId'), '-devtest')]",
+            "condition":"[and(bool(variables('ifDevTest')),equals(parameters('deployEnvVm'),'Yes'))]",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+              "mode": "Incremental",
+              "templateLink": {
+                "uri": "[concat(uri(parameters('templateLinkBase'), 'nested/vm-iaas-devtest.json'), parameters('templateLinkAccessToken'))]"
+              },
+              "parameters": {
+        
+                "deploymentId": {
+                  "value": "[parameters('deploymentId')]"
+                },
+                "environment": {
+                  "value": "[parameters('environment')]"
+                },
+                "role": {
+                    "value": "[parameters('role')]"
+                },
+                "lbprivateIPAddress": {
+                    "value": "[parameters('lbprivateIPAddress')]"
+                },
+                "SASToken": {
+                    "value": "[parameters('templateLinkAccessToken')]"
+                },
+                "subnetName": {
+                    "value": "[parameters('subnetName')]"
+                },
+                "vNetworkName": {
+                    "value": "[parameters('vNetworkName')]"
+                },
+                "vNetResourceGroup": {
+                    "value": "[parameters('vNetResourceGroup')]"
+                },
+                "allowNsgInboundFrom": {
+                    "value": "[parameters('GwVpnClientAddressPoolPrefix')]"
+                },
+                "location": {
+                  "value": "[parameters('location')]"
+                },
+                "solrVmName": {
+                    "value": "[parameters('vmName')]"
+                },
+                "solrSubnetAddressPrefix": {
+                  "value": "[parameters('subnetAddressPrefix')]"
+                },
+                "solrVmAdminLoginName": {
+                   "value": "[parameters('vmAdminLoginName')]"
+                },
+                "solrVmAdminPassword": {
+                    "value": "[parameters('vmAdminPassword')]"
+                },
+                "solrVmCount": {
+                    "value": "[parameters('vmCount')]"
+                },
+                "packageToCopyUri": {
+                    "value": "[variables('packageToCopyUri')]"
+                },
+                "DscArchiveUri": {
+                    "value": "[variables('DscArchiveUri')]"
+                },
+                "DscDataUri": {
+                    "value": "[variables('DscDataUri')]"
+                },
+                "DscConfigFunction": {
+                    "value": "[variables('DscConfigFunction')]"
+                },
+                "commoncontainerName": {
+                    "value": "[parameters('commoncontainerName')]"
+                },
+                "psscriptFilename": {
+                    "value": "[parameters('psscriptFilename')]"
+                },
+                "psscriptUri": {
+                    "value": "[variables('psscriptUri')]"
+                },
+                "psPackageDir": {
+                    "value": "[parameters('psPackageDir')]"
+                }
+              }
+            },
+            "dependsOn": [
+                "[resourceId(parameters('vNetResourceGroup'),'Microsoft.Resources/deployments', concat(parameters('deploymentId'), '-vnet'))]"
+              ]
+        },
+        {
+            "apiVersion": "[variables('resourcesApiVersion')]",
+            "name": "[concat(parameters('deploymentId'), '-nonenv')]",
+            "condition": "[and(equals(parameters('environment'),'nonenv'),equals(parameters('deployEnvVm'),'Yes'))]",
+            "type": "Microsoft.Resources/deployments",
+            "properties": {
+              "mode": "Incremental",
+              "templateLink": {
+                "uri": "[concat(uri(parameters('templateLinkBase'), 'nested/vm-iaas-nonenv.json'), parameters('templateLinkAccessToken'))]"
+              },
+              "parameters": {
+        
+                "deploymentId": {
+                  "value": "[parameters('deploymentId')]"
+                },
+                "environment": {
+                  "value": "[parameters('environment')]"
+                },
+                "role": {
+                    "value": "[parameters('role')]"
+                },
+                "SASToken": {
+                    "value": "[parameters('templateLinkAccessToken')]"
+                },
+                "subnetName": {
+                    "value": "[parameters('subnetName')]"
+                },
+                "vNetworkName": {
+                    "value": "[parameters('vNetworkName')]"
+                },
+                "vNetResourceGroup": {
+                    "value": "[parameters('vNetResourceGroup')]"
+                },
+                "allowNsgInboundFrom": {
+                    "value": "[parameters('GwVpnClientAddressPoolPrefix')]"
+                },
+                "location": {
+                  "value": "[parameters('location')]"
+                },
+                "vmName": {
+                    "value": "[parameters('vmName')]"
+                },
+                "subnetAddressPrefix": {
+                  "value": "[parameters('subnetAddressPrefix')]"
+                },
+                "vmAdminLoginName": {
+                   "value": "[parameters('vmAdminLoginName')]"
+                },
+                "vmAdminPassword": {
+                    "value": "[parameters('vmAdminPassword')]"
+                },
+                "vmCount": {
+                    "value": "[parameters('vmCount')]"
+                },
+                "packageToCopyUri": {
+                    "value": "[variables('packageToCopyUri')]"
+                },
+                "DscArchiveUri": {
+                    "value": "[variables('DscArchiveUri')]"
+                },
+                "DscDataUri": {
+                    "value": "[variables('DscDataUri')]"
+                },
+                "DscConfigFunction": {
+                    "value": "[variables('DscConfigFunction')]"
+                },
+                "commoncontainerName": {
+                    "value": "[parameters('commoncontainerName')]"
+                },
+                "psscriptFilename": {
+                    "value": "[parameters('psscriptFilename')]"
+                },
+                "psscriptUri": {
+                    "value": "[variables('psscriptUri')]"
+                },
+                "psPackageDir": {
+                    "value": "[parameters('psPackageDir')]"
+                }
+              }
+            },
+            "dependsOn": [
+                "[resourceId(parameters('vNetResourceGroup'),'Microsoft.Resources/deployments', concat(parameters('deploymentId'), '-vnet'))]"
+              ]
+        }
+    ],
+    "outputs": {
+        "DscArchiveUriOut": {"type": "string", "value": "[variables('DscArchiveUri')]"},
+        "DscDataUriOut": {"type": "string", "value": "[variables('DscDataUri')]"},
+        "DscConfigFunctionOut": {"type": "string", "value": "[variables('DscConfigFunction')]"},
+        "solrInstance1PortOut": {"type": "string", "value": "[variables('solrInstance1Port')]"},
+        "solrInstance2PortOut": {"type": "string", "value": "[variables('solrInstance2Port')]"}
+
+  }
+}

@@ -1,0 +1,286 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+      "deploymentId": {
+          "type": "string"
+      },
+      "environment": {
+          "type": "string"
+      },
+      "deploymentRole": {
+        "type": "string",
+        "defaultValue": "solr"
+      },
+      "vNetworkName": {
+          "type": "string",
+          "defaultValue": "[concat(parameters('deploymentId'), '-vnet')]"
+      },
+      "vNetSubnets": {
+          "type": "array"
+      },
+      "location": {
+          "type": "string"
+      },
+      "vNetAddressSpace": {
+          "type": "string"
+      },
+      "enableDdosProtection": {
+          "type": "bool",
+          "defaultValue": false
+      },
+      "solrNsgRules": {
+        "type": "array",
+        "defaultValue": [
+          {
+            "ruleName": "http-in",
+            "protocol": "*",
+            "direction": "Inbound",
+            "access": "Allow",
+            "sourcePortRange": "*",
+            "sourceAddressPrefix": "*",
+            "destinationPortRange": "80",
+            "destinationAddressPrefix": "*",
+            "priority": 110
+          },
+          {
+            "ruleName": "solr-in",
+            "protocol": "*",
+            "direction": "Inbound",
+            "access": "Allow",
+            "sourcePortRange": "*",
+            "sourceAddressPrefix": "*",
+            "destinationPortRange": "8983-8986",
+            "destinationAddressPrefix": "*",
+            "priority": 120
+          },
+          {
+            "ruleName": "rdp-in",
+            "protocol": "*",
+            "direction": "Inbound",
+            "access": "Allow",
+            "sourcePortRange": "*",
+            "sourceAddressPrefix": "*",
+            "destinationPortRange": "3389",
+            "destinationAddressPrefix": "*",
+            "priority": 130
+          }
+        ]
+      },
+      "Gwname": {
+          "type": "string",
+          "defaultValue": "[concat(toLower(parameters('deploymentId')), '-',  'vnetgw','-', parameters('environment'))]"
+      },
+      "GwSku": {
+          "type": "string",
+          "defaultValue": "VpnGw1"
+      },
+      "Gwtype": {
+          "defaultValue": "Vpn",
+          "allowedValues": [
+              "Vpn",
+              "ExpressRoute"
+          ],
+          "type": "string"
+      },
+      "GwVpnType": {
+          "defaultValue": "RouteBased",
+          "allowedValues": [
+              "RouteBased",
+              "PolicyBased"
+          ],
+          "type": "string"
+      },
+      "GwVpnProtocol": {
+          "defaultValue": "SSTP",
+          "allowedValues": [
+              "SSTP",
+              "IkeV2",
+              "OpenVPN"
+          ],
+          "type": "string"
+      },
+      "GwSubnetPrefix": {
+          "type": "string",
+          "defaultValue": "10.0.10.0/24"
+      },
+      "GwVpnClientAddressPoolPrefix": {
+          "type": "string",
+          "defaultValue": "10.0.255.128/25"
+      },
+      "GwPublicIpName": {
+          "type": "string",
+          "defaultValue":  "[concat(toLower(parameters('deploymentId')),'-',  'gwpip','-', parameters('environment'))]"
+      },
+      "GwPIPdomainNameLabel": {
+          "type": "string",
+          "defaultValue":  "[concat(toLower(parameters('deploymentId')),'-',  'vpngtw','-', parameters('environment'))]"
+      },
+      "GwclientRootCertName": {
+          "type": "string"
+      },
+      "GwclientRootCertData": {
+          "type": "string"
+      }
+  },
+  "variables": {
+      "resourcesApiVersion": "2018-08-01"
+    },
+  "resources": [
+      {
+        "apiVersion": "[variables('resourcesApiVersion')]",
+        "name": "[parameters('vNetworkName')]",
+        "type": "Microsoft.Network/virtualNetworks",
+        "location": "[parameters('location')]",
+        "properties": {
+            "addressSpace": {
+                "addressPrefixes": [
+                    "[parameters('vNetAddressSpace')]"
+                ]
+            },
+            "subnets": [
+                {
+                  "name": "GatewaySubnet",
+                  "properties": {
+                    "addressPrefix": "[parameters('GwSubnetPrefix')]"
+                  }
+                }
+            ],
+            "enableDdosProtection": "[parameters('enableDdosProtection')]"
+          }
+        },
+        {
+          "apiVersion": "[variables('resourcesApiVersion')]",
+          "name": "[concat(parameters('vNetSubnets')[copyIndex()].name,'-','nsg')]",
+          "type": "Microsoft.Network/networkSecurityGroups",
+          "dependsOn": [
+            "[concat('Microsoft.Network/virtualNetworks/',parameters('vNetworkName'))]"
+          ],
+          "location": "[parameters('location')]",
+          "tags": {
+            "environment": "[parameters('environment')]"
+          },
+          "copy": {
+            "name": "nsgCopy",
+            "count": "[length(parameters('vNetSubnets'))]"
+          },
+          "properties": {
+            "copy": [
+              {
+                "name": "securityRules",
+                "count": "[length(parameters('solrNsgRules'))]",
+                "input": {
+                  "name": "[parameters('solrNsgRules')[copyIndex('securityRules')].ruleName]",
+                  "properties": {
+                    "protocol": "[parameters('solrNsgRules')[copyIndex('securityRules')].protocol]",
+                    "sourcePortRange": "[parameters('solrNsgRules')[copyIndex('securityRules')].sourcePortRange]",
+                    "destinationPortRange": "[parameters('solrNsgRules')[copyIndex('securityRules')].destinationPortRange]",
+                    "sourceAddressPrefix": "[parameters('solrNsgRules')[copyIndex('securityRules')].sourceAddressPrefix]",
+                    "destinationAddressPrefix": "[parameters('solrNsgRules')[copyIndex('securityRules')].destinationAddressPrefix]",
+                    "access": "[parameters('solrNsgRules')[copyIndex('securityRules')].access]",
+                    "priority": "[parameters('solrNsgRules')[copyIndex('securityRules')].priority]",
+                    "direction": "[parameters('solrNsgRules')[copyIndex('securityRules')].direction]"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "apiVersion": "[variables('resourcesApiVersion')]",
+          "type": "Microsoft.Network/virtualNetworks/subnets",
+          "name": "[concat(parameters('vNetworkName'), '/', parameters('vNetSubnets')[copyIndex()].name)]",
+          "location": "[parameters('location')]",
+          "dependsOn": [
+              "nsgCopy"
+          ],
+          "copy": {
+              "name": "subnetCopy",
+              "count": "[length(parameters('vNetSubnets'))]",
+              "mode": "serial",
+              "batchSize": 1
+          },
+          "properties": {
+            "addressPrefix": "[concat(parameters('vNetSubnets')[copyIndex()].addressPrefix)]",
+            "networkSecurityGroup": {
+              "id": "[concat(resourceGroup().id, '/providers/Microsoft.Network/networkSecurityGroups/', parameters('vNetSubnets')[copyIndex()].name,'-','nsg')]"
+              } 
+            }
+        },
+        {
+            "apiVersion": "[variables('resourcesApiVersion')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "[parameters('GwPublicIpName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[parameters('GwPIPdomainNameLabel')]"
+                }
+            }
+        },
+        {
+          "apiVersion": "[variables('resourcesApiVersion')]",
+          "type": "Microsoft.Network/virtualNetworkGateways",
+          "name": "[parameters('Gwname')]",
+          "location": "[resourceGroup().location]",
+          "dependsOn": [
+            "[concat('Microsoft.Network/publicIPAddresses/', parameters('GwPublicIpName'))]",
+            "[concat('Microsoft.Network/virtualNetworks/',parameters('vNetworkName'))]"
+          ],
+          "properties": {
+            "ipConfigurations": [
+              {
+                "properties": {
+                  "privateIPAllocationMethod": "Dynamic",
+                  "subnet": {
+                    "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vNetworkName'), 'GatewaySubnet')]"
+                  },
+                  "publicIPAddress": {
+                    "id": "[resourceId('Microsoft.Network/publicIPAddresses',parameters('GwPublicIpName'))]"
+                  }
+                },
+                "name": "vnetGatewayConfig"
+              }
+            ],
+            "sku": {
+              "name": "[parameters('GwSku')]",
+              "tier": "[parameters('GwSku')]"
+            },
+            "gatewayType": "[parameters('Gwtype')]",
+            "vpnType": "[parameters('GwVpnType')]",
+            "enableBgp": "false",
+            "vpnClientConfiguration": {
+              "vpnClientAddressPool": {
+                "addressPrefixes": [
+                  "[parameters('GwVpnClientAddressPoolPrefix')]"
+                ]
+              },
+              "vpnClientRootCertificates": [
+                {
+                  "name": "[parameters('GwclientRootCertName')]",
+                  "properties": {
+                    "PublicCertData": "[parameters('GwclientRootCertData')]"
+                  }
+                }
+              ],
+              "vpnClientProtocols": [
+                  "[parameters('GwVpnProtocol')]"
+              ]
+            }
+          }
+        }
+  ],
+  
+  "outputs": {
+      "vNetworkOut": {
+          "type": "object",
+          "value": {
+              "vNetworkName": "[parameters('vNetworkName')]",
+              "addressPrefixes": "[parameters('vNetAddressSpace')]",
+              "enableDdosProtection": "[parameters('enableDdosProtection')]"
+          }
+        }
+
+}
+}

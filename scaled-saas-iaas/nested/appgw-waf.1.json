@@ -1,0 +1,534 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "deploymentId": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string",
+      "defaultValue": "accprod"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "vNetworkName": {
+      "type": "string"
+    },
+    "vNetResourceGroup": {
+      "type": "string"
+    },
+    "applicationGatewayName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-appgw')]"
+    },
+    "appGatewaySubnetName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-appgwsubnet')]"
+    },
+    "appGwSubnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.0.6.0/24"
+    },
+    "appGwPublicIpName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-appgwpip')]"
+    },
+    "appGwPublicIpLabel": {
+      "type": "string",
+      "defaultValue": "sitecoreappgw"
+    },
+    "appGwNsgName": {
+      "type": "string",
+      "defaultValue": "[concat(parameters('deploymentId'),'-appgwnsg')]"
+    },
+    "int-acc-frontWebsiteFqdn": {
+      "type": "string"
+    },
+    "tmw-acc-frontWebsiteFqdn": {
+      "type": "string"
+    },
+    "int-acc-websiteFqdn": {
+      "type": "string"
+    },
+    "tmw-acc-websiteFqdn": {
+      "type": "string"
+    },
+    "allowNsgInboundFrom": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "nsgRules": {
+      "type": "array",
+      "defaultValue": [
+        {
+          "ruleName": "http-in",
+          "protocol": "*",
+          "direction": "Inbound",
+          "access": "Allow",
+          "sourcePortRange": "*",
+          "sourceAddressPrefix": "*",
+          "destinationPortRange": "80",
+          "destinationAddressPrefix": "*",
+          "priority": 110
+        },
+        {
+          "ruleName": "https-in",
+          "protocol": "*",
+          "direction": "Inbound",
+          "access": "Allow",
+          "sourcePortRange": "*",
+          "sourceAddressPrefix": "*",
+          "destinationPortRange": "443",
+          "destinationAddressPrefix": "*",
+          "priority": 120
+        },
+        {
+          "ruleName": "rdp-in",
+          "protocol": "*",
+          "direction": "Inbound",
+          "access": "Allow",
+          "sourcePortRange": "*",
+          "sourceAddressPrefix": "*",
+          "destinationPortRange": "3389",
+          "destinationAddressPrefix": "*",
+          "priority": 130
+        }
+      ]
+    },
+    "applicationGatewaySize": {
+      "type": "string",
+      "allowedValues": [
+        "WAF_Medium",
+        "WAF_Large"
+      ],
+      "defaultValue": "WAF_Medium",
+      "metadata": {
+        "description": "Application Gateway size"
+      }
+    },
+    "capacity": {
+      "type": "int",
+      "allowedValues": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ],
+      "defaultValue": 2,
+      "metadata": {
+        "description": "Number of instances"
+      }
+    },
+    "wafMode": {
+      "type": "string",
+      "allowedValues": [
+        "Detection",
+        "Prevention"
+      ],
+      "defaultValue": "Prevention",
+      "metadata": {
+        "description": "WAF Mode"
+      }
+    },
+    "frontendCertData": {
+      "type": "string",
+      "metadata": {
+        "description": "Base-64 encoded form of the .pfx file. This is the cert terminating on the Application Gateway."
+      }
+    },
+    "frontendCertPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Password for .pfx certificate"
+      }
+    },
+    "backendPublicKeyData": {
+      "type": "string",
+      "metadata": {
+        "description": "Base-64 encoded form of the .cer file. This is the public key for the cert on the web servers."
+      }
+    }
+  },
+  "variables": {
+    "resourcesApiVersion": "2018-08-01",
+    "vnetID": "[resourceId(parameters('vNetResourceGroup'), 'Microsoft.Network/virtualNetworks', parameters('vNetworkName'))]",
+    "subnetRef": "[concat(variables('vnetID'),'/subnets/', parameters('appGatewaySubnetName'))]",
+    "publicIPRef": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('appGwPublicIpName'))]",
+    "applicationGatewayID": "[resourceId('Microsoft.Network/applicationGateways',parameters('applicationGatewayName'))]",
+
+    "vm1IpAddress": "10.0.0.4",
+    "vm2IpAddress": "10.0.0.5",
+    "appGwPublicIpName": "ApplicationGatewayPublicIp",
+
+  
+    "wafEnabled": true,
+    "wafMode": "[parameters('wafMode')]",
+    "wafRuleSetType": "OWASP",
+    "wafRuleSetVersion": "3.0"
+
+  },
+  "resources": [
+    {
+      "apiVersion": "2017-03-01",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[parameters('appGwPublicIpName')]",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic",
+        "dnsSettings": {
+            "domainNameLabel": "[parameters('appGwPublicIpLabel')]"
+        }
+      }
+    },
+    {
+      "apiVersion": "[variables('resourcesApiVersion')]",
+      "name": "[parameters('appGwNsgName')]",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "properties": {
+        "copy": [
+          {
+            "name": "securityRules",
+            "count": "[length(parameters('nsgRules'))]",
+            "input": {
+              "name": "[parameters('nsgRules')[copyIndex('securityRules')].ruleName]",
+              "properties": {
+                "protocol": "[parameters('nsgRules')[copyIndex('securityRules')].protocol]",
+                "sourcePortRange": "[parameters('nsgRules')[copyIndex('securityRules')].sourcePortRange]",
+                "destinationPortRange": "[parameters('nsgRules')[copyIndex('securityRules')].destinationPortRange]",
+                "sourceAddressPrefix": "[parameters('nsgRules')[copyIndex('securityRules')].sourceAddressPrefix]",
+                "destinationAddressPrefix": "[parameters('nsgRules')[copyIndex('securityRules')].destinationAddressPrefix]",
+                "access": "[parameters('nsgRules')[copyIndex('securityRules')].access]",
+                "priority": "[parameters('nsgRules')[copyIndex('securityRules')].priority]",
+                "direction": "[parameters('nsgRules')[copyIndex('securityRules')].direction]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2018-08-01",
+      "type": "Microsoft.Resources/deployments",
+      "name": "[parameters('appGatewaySubnetName')]",
+      "resourceGroup": "[parameters('vNetResourceGroup')]",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+          "contentVersion": "1.0.0.0",
+          "resources": [
+            {
+              "apiVersion": "[variables('resourcesApiVersion')]",
+              "type": "Microsoft.Network/virtualNetworks/subnets",
+              "name": "[concat(parameters('vNetworkName'), '/', parameters('appGatewaySubnetName'))]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressPrefix": "[parameters('appGwSubnetAddressPrefix')]",
+                "networkSecurityGroup": {
+                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('appGwNsgName'))]"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkSecurityGroups/', parameters('appGwNsgName'))]"
+      ]
+    },
+    {
+      "apiVersion": "2017-06-01",
+      "name": "[parameters('applicationGatewayName')]",
+      "type": "Microsoft.Network/applicationGateways",
+      "location": "[parameters('location')]",
+      "tags": {
+        "environment": "[parameters('environment')]"
+      },
+      "dependsOn": [
+        "[parameters('appGatewaySubnetName')]",
+        "[resourceId('Microsoft.Network/publicIPAddresses/', parameters('appGwPublicIpName'))]"
+      ],
+      "properties": {
+        "sku": {
+          "name": "[parameters('applicationGatewaySize')]",
+          "tier": "WAF",
+          "capacity": "[parameters('capacity')]"
+        },
+        "sslCertificates": [
+          {
+            "name": "appGatewayFrontEndSslCert",
+            "properties": {
+              "data": "[parameters('frontendCertData')]",
+              "password": "[parameters('frontendCertPassword')]"
+            }
+          }
+        ],
+        "gatewayIPConfigurations": [
+          {
+            "name": "appGatewayIpConfig",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ],
+        "authenticationCertificates": [
+          {
+            "properties": {
+              "data": "[parameters('backendPublicKeyData')]"
+            },
+            "name": "appGatewayBackendCert"
+          }
+        ],
+        "frontendIPConfigurations": [
+          {
+            "name": "appGatewayFrontendIP",
+            "properties": {
+              "PublicIPAddress": {
+                "id": "[variables('publicIPRef')]"
+              }
+            }
+          }
+        ],
+        "frontendPorts": [
+          {
+            "name": "frontEndHttpPort",
+            "properties": {
+              "Port": 80
+            }
+          },
+          {
+            "name": "frontEndHttpsPort",
+            "properties": {
+              "Port": 443
+            }
+          }
+        ],
+        "backendAddressPools": [
+          {
+            "name": "int-acc-SitecoreWebApps",
+            "properties": {
+              "BackendAddresses": [
+                {
+                  "fqdn": "[parameters('int-acc-websiteFqdn')]"
+                } //,
+               // {
+                //  "IpAddress": "[variables('vm2IpAddress')]"
+               // }
+              ]
+            }
+          },
+          {
+            "name": "tmw-acc-SitecoreWebApps",
+            "properties": {
+              "BackendAddresses": [
+                {
+                  "fqdn": "[parameters('tmw-acc-websiteFqdn')]"
+                }
+              ]
+            }
+          }
+        ],
+        "backendHttpSettingsCollection": [
+          {
+            "name": "BackEndHttpSettings",
+            "properties": {
+              "Port": 80,
+              "Protocol": "Http",
+              "CookieBasedAffinity": "Disabled",
+              "Probe": {
+                "id": "[concat(variables('applicationGatewayID'), '/probes/httpProbe')]"
+              },
+              "pickHostNameFromBackendAddress": true
+            }
+          },
+          {
+            "name": "BackEndHttpsSettings",
+            "properties": {
+              "Port": 443,
+              "Protocol": "Https",
+              "CookieBasedAffinity": "Disabled",
+              "Probe": {
+                "id": "[concat(variables('applicationGatewayID'), '/probes/httpsProbe')]"
+              },
+              "pickHostNameFromBackendAddress": true
+            }
+          }
+        ],
+        "httpListeners": [
+          {
+            "name": "int-acc-Http-listener",
+            "properties": {
+              "FrontendIPConfiguration": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+              },
+              "FrontendPort": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendPorts/frontEndHttpPort')]"
+              },
+              "Protocol": "Http",
+              "SslCertificate": null,
+              "HostName": "[parameters('int-acc-frontWebsiteFqdn')]"
+            }
+          },
+          {
+            "name": "int-acc-Https-listener",
+            "properties": {
+              "FrontendIPConfiguration": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+              },
+              "FrontendPort": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendPorts/frontEndHttpsPort')]"
+              },
+              "Protocol": "Https",
+              "SslCertificate": {
+                "Id": "[concat(variables('applicationGatewayID'), '/sslCertificates/appGatewayFrontEndSslCert')]"
+              },
+              "HostName": "[parameters('int-acc-frontWebsiteFqdn')]",
+              "requireServerNameIndication":true 
+            }
+          },
+          {
+            "name": "tmw-acc-Http-listener",
+            "properties": {
+              "FrontendIPConfiguration": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+              },
+              "FrontendPort": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendPorts/frontEndHttpPort')]"
+              },
+              "Protocol": "Http",
+              "SslCertificate": null,
+              "HostName": "[parameters('tmw-acc-frontWebsiteFqdn')]"
+            }
+          },
+          {
+            "name": "tmw-acc-Https-listener",
+            "properties": {
+              "FrontendIPConfiguration": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendIPConfigurations/appGatewayFrontendIP')]"
+              },
+              "FrontendPort": {
+                "Id": "[concat(variables('applicationGatewayID'), '/frontendPorts/frontEndHttpsPort')]"
+              },
+              "Protocol": "Https",
+              "SslCertificate": {
+                "Id": "[concat(variables('applicationGatewayID'), '/sslCertificates/appGatewayFrontEndSslCert')]"
+              },              
+              "HostName": "[parameters('tmw-acc-frontWebsiteFqdn')]",
+              "requireServerNameIndication":true            
+            }
+          }
+        ],
+        "requestRoutingRules": [
+          {
+            "Name": "intaccHttpRule",
+            "properties": {
+              "RuleType": "Basic",
+              "httpListener": {
+                "id": "[concat(variables('applicationGatewayID'), '/httpListeners/int-acc-Http-listener')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendAddressPools/int-acc-SitecoreWebApps')]"
+              },
+              "backendHttpSettings": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendHttpSettingsCollection/BackEndHttpSettings')]"
+              }
+            }
+          },
+          {
+            "Name": "intaccHttpsRule",
+            "properties": {
+              "RuleType": "Basic",
+              "httpListener": {
+                "id": "[concat(variables('applicationGatewayID'), '/httpListeners/int-acc-Https-listener')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendAddressPools/int-acc-SitecoreWebApps')]"
+              },
+              "backendHttpSettings": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendHttpSettingsCollection/BackEndHttpsSettings')]"
+              }
+            }
+          },
+          {
+            "Name": "twmaccHttpRule",
+            "properties": {
+              "RuleType": "Basic",
+              "httpListener": {
+                "id": "[concat(variables('applicationGatewayID'), '/httpListeners/tmw-acc-Http-listener')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendAddressPools/tmw-acc-SitecoreWebApps')]"
+              },
+              "backendHttpSettings": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendHttpSettingsCollection/BackEndHttpSettings')]"
+              }
+            }
+          },
+          {
+            "Name": "twmaccHttpsRule",
+            "properties": {
+              "RuleType": "Basic",
+              "httpListener": {
+                "id": "[concat(variables('applicationGatewayID'), '/httpListeners/tmw-acc-Https-listener')]"
+              },
+              "backendAddressPool": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendAddressPools/tmw-acc-SitecoreWebApps')]"
+              },
+              "backendHttpSettings": {
+                "id": "[concat(variables('applicationGatewayID'), '/backendHttpSettingsCollection/BackEndHttpsSettings')]"
+              }
+            }
+          }
+        ],
+        "probes": [
+          {
+            "Name": "httpsProbe",
+            "properties": {
+              "Protocol": "https",
+              "Path": "/",
+              "Interval": 30,
+              "Timeout": 30,
+              "UnhealthyThreshold": 3,
+              "PickHostNameFromBackendHttpSettings": true
+            }
+          },
+          {
+            "Name": "httpProbe",
+            "properties": {
+              "Protocol": "http",
+              "Path": "/",
+              "Interval": 30,
+              "Timeout": 30,
+              "UnhealthyThreshold": 3,
+              "PickHostNameFromBackendHttpSettings": true
+            }
+          }
+        ],
+        "webApplicationFirewallConfiguration": {
+          "enabled": "[variables('wafEnabled')]",
+          "firewallMode": "[variables('wafMode')]",
+          "ruleSetType": "[variables('wafRuleSetType')]",
+          "ruleSetVersion": "[variables('wafRuleSetVersion')]",
+          "disabledRuleGroups": []
+        }
+      }
+    }
+  ]
+}
